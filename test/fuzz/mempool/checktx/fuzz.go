@@ -1,27 +1,32 @@
 package checktx
 
 import (
-	"github.com/tendermint/abci/client"
+	"github.com/tendermint/tendermint/abci/example/kvstore"
 	"github.com/tendermint/tendermint/config"
-	"github.com/tendermint/tendermint/mempool"
+	mempl "github.com/tendermint/tendermint/mempool"
 	"github.com/tendermint/tendermint/proxy"
-	"github.com/tendermint/tendermint/types"
 )
 
-const addr = "0.0.0.0:8080"
+var mempool mempl.Mempool
 
-func Fuzz(data []byte) int {
-	c, err := abcicli.NewClient(addr, "socket", false)
+func init() {
+	app := kvstore.NewApplication()
+	cc := proxy.NewLocalClientCreator(app)
+	appConnMem, _ := cc.NewABCIClient()
+	err := appConnMem.Start()
 	if err != nil {
 		panic(err)
 	}
 
-	app := proxy.NewAppConnMempool(c)
-	mcfg := config.DefaultMempoolConfig()
-	mp := mempool.NewMempool(mcfg, app, 1)
-	defer mp.CloseWAL()
+	cfg := config.DefaultMempoolConfig()
+	cfg.Broadcast = false
 
-	if err := mp.CheckTx(types.Tx(data), nil); err != nil {
+	mempool = mempl.NewCListMempool(cfg, appConnMem, 0)
+}
+
+func Fuzz(data []byte) int {
+	err := mempool.CheckTx(data, nil, mempl.TxInfo{})
+	if err != nil {
 		return 0
 	}
 
