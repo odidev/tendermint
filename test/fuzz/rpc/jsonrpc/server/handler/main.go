@@ -7,21 +7,24 @@ import (
 	"net/http"
 	"net/http/httptest"
 
-	rs "github.com/tendermint/tendermint/rpc/lib/server"
-	types "github.com/tendermint/tendermint/rpc/lib/types"
-	"github.com/tendermint/tmlibs/log"
+	"github.com/tendermint/tendermint/libs/log"
+	rs "github.com/tendermint/tendermint/rpc/jsonrpc/server"
+	types "github.com/tendermint/tendermint/rpc/jsonrpc/types"
 )
 
 var rpcFuncMap = map[string]*rs.RPCFunc{
 	"c": rs.NewRPCFunc(func(s string, i int) (string, int) { return "foo", 200 }, "s,i"),
 }
+var mux *http.ServeMux
 
-func Fuzz(data []byte) int {
+func init() {
 	mux := http.NewServeMux()
 	buf := new(bytes.Buffer)
 	lgr := log.NewTMLogger(buf)
 	rs.RegisterRPCFuncs(mux, rpcFuncMap, lgr)
+}
 
+func Fuzz(data []byte) int {
 	req, _ := http.NewRequest("POST", "http://localhost/", bytes.NewReader(data))
 	rec := httptest.NewRecorder()
 	mux.ServeHTTP(rec, req)
