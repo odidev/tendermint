@@ -1,24 +1,24 @@
 package blockchain
 
 import (
-	"github.com/tendermint/tendermint/blockchain"
-	"github.com/tendermint/tendermint/types"
+	"fmt"
+
+	bc "github.com/tendermint/tendermint/blockchain"
 )
 
-var maxBCMessageSize = (types.DefaultConsensusParams()).BlockSizeParams.MaxBytes + 2
-
 func Fuzz(data []byte) int {
-	_, msg, err := blockchain.DecodeMessage(data, maxBCMessageSize)
-	if msg != nil && err == nil {
-		return 1
-	}
-	if msg != nil && err != nil {
+	msg, err := bc.DecodeMsg(data)
+	if err != nil {
+		if msg != nil {
+			panic(fmt.Sprintf("msg %v != nil on error", msg))
+		}
 		return 0
 	}
-	if len(data) != maxBCMessageSize {
-		if err == nil || msg != nil {
-			return 0
-		}
+
+	_, err = bc.EncodeMsg(msg)
+	if err != nil {
+		panic(err)
 	}
-	return -1
+
+	return 1
 }
