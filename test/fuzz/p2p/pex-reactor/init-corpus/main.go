@@ -8,8 +8,9 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/tendermint/go-wire"
+	"github.com/tendermint/tendermint/crypto/ed25519"
 	"github.com/tendermint/tendermint/p2p"
+	tmp2p "github.com/tendermint/tendermint/proto/tendermint/p2p"
 )
 
 func main() {
@@ -19,11 +20,15 @@ func main() {
 	if rootDir == "" {
 		rootDir = "."
 	}
-	InitCorpus(rootDir)
+	initCorpus(rootDir)
 }
 
-func InitCorpus(rootDir string) {
+func initCorpus(rootDir string) {
 	log.SetFlags(0)
+	corpusDir := filepath.Join(rootDir, "corpus")
+	if err := os.MkdirAll(corpusDir, 0755); err != nil {
+		log.Fatalf("Creating %q err: %v", corpusDir, err)
+	}
 	sizes := []int{0, 1, 2, 17, 5, 31}
 
 	// Make the PRNG predictable
@@ -32,15 +37,31 @@ func InitCorpus(rootDir string) {
 	for _, n := range sizes {
 		var addrs []*p2p.NetAddress
 		for i := 0; i < n; i++ {
-			addr := fmt.Sprintf("%v.%v.%v.%v:46656", rand.Int()%256, rand.Int()%256, rand.Int()%256, rand.Int()%256)
+			privKey := ed25519.GenPrivKey()
+			addr := fmt.Sprintf(
+				"%s@%v.%v.%v.%v:26656",
+				p2p.NodeIDFromPubKey(privKey.PubKey()),
+				rand.Int()%256,
+				rand.Int()%256,
+				rand.Int()%256,
+				rand.Int()%256,
+			)
 			netAddr, _ := p2p.NewNetAddressString(addr)
 			addrs = append(addrs, netAddr)
 		}
-		msg := wire.BinaryBytes(struct{ p2p.PexMessage }{&pexAddrsMessage{Addrs: addrs}})
+		msg := tmp2p.Message{
+			Sum: &tmp2p.Message_PexAddrs{
+				PexAddrs: &tmp2p.PexAddrs{Addrs: p2p.NetAddressesToProto(addrs)},
+			},
+		}
+		bz, err := msg.Marshal()
+		if err != nil {
+			log.Fatalf("unable to marshal: %v", err)
+		}
 		name := filepath.Join(rootDir, "corpus", fmt.Sprintf("%d", n))
 		f, err := os.Create(name)
 		if err == nil {
-			f.Write(msg)
+			f.Write(bz)
 			if err := f.Close(); err == nil {
 				log.Printf("Successfully generated corpus file: %q", name)
 			} else {
@@ -51,24 +72,3 @@ func InitCorpus(rootDir string) {
 		}
 	}
 }
-
-// Start of go-wire related code
-// This go-wire code is copied from:
-//  https://github.com/tendermint/tendermint/blob/128e2a1d9e88eeb0aa7645973940b23eb7a14803/p2p/pex_reactor.go#L315-L328
-const (
-	msgTypeRequest = byte(0x01)
-	msgTypeAddrs   = byte(0x02)
-)
-
-var _ = wire.RegisterInterface(
-	struct{ p2p.PexMessage }{},
-	wire.ConcreteType{&pexRequestMessage{}, msgTypeRequest},
-	wire.ConcreteType{&pexAddrsMessage{}, msgTypeAddrs},
-)
-
-type pexRequestMessage struct{}
-type pexAddrsMessage struct {
-	Addrs []*p2p.NetAddress
-}
-
-// End of go-wire related code
